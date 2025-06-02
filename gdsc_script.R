@@ -256,19 +256,54 @@ plot(roc_curve_log)
 # XGBoost regression model
 library(xgboost)
 
-train_matrix <- model.matrix(LN_IC50 ~ CELL_LINE_NAME + DRUG_NAME, 
+train_data <- train_data[complete.cases(train_data[, c("tissue_descriptor_2", 
+                                                       "TARGET", "LN_IC50")]), ]
+test_data <- test_data[complete.cases(test_data[, c("tissue_descriptor_2", 
+                                                    "TARGET", "LN_IC50")]), ]
+# Generate training matrices
+train_matrix <- model.matrix(LN_IC50 ~ tissue_descriptor_2 + TARGET, 
                              data = train_data)
-test_matrix  <- model.matrix(LN_IC50 ~ CELL_LINE_NAME + DRUG_NAME, 
+test_matrix  <- model.matrix(LN_IC50 ~ tissue_descriptor_2 + TARGET, 
                              data = test_data)
 
 dtrain <- xgb.DMatrix(data = train_matrix, label = train_data$LN_IC50)
 dtest  <- xgb.DMatrix(data = test_matrix, label = test_data$LN_IC50)
 
-xgb_model <- xgboost(data = dtrain, 
-                     objective = "reg:squarederror",
-                     nrounds = 100,
-                     eta = 0.1)
+# Design model
+params <- list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  max_depth = 4,
+  eta = 0.1
+)
+model <- xgb.train(params,
+                   data = dtrain,
+                   nrounds = 200,
+                   watchlist = list(train = dtrain, test = dtest),
+                   verbose = 0,
+                   callbacks = list(cb.evaluation.log()))
 
+# Plotting model training and test curves
+iterations = list(model$evaluation_log[, "iter"])
+train_rmse = list(model$evaluation_log[, "train_rmse"])
+test_rmse = list(model$evaluation_log[, "test_rmse"])
+
+plot_data <- data.frame(
+  iterations = iterations,
+  train_rmse = train_rmse,
+  test_rmse = test_rmse
+) |> pivot_longer(
+  cols=c("train_rmse", "test_rmse"),
+  names_to="rmse",
+  values_to="values"
+)
+
+ggplot(data = plot_data, aes(x = iter, y = values)) +
+  geom_line(aes(color=rmse)) +
+  labs(x="iterations", y="RMSE", title="Model training and test curves") +
+  theme_minimal()
+
+# Predictions
 xgb_predictions <- predict(xgb_model, dtest)
 reg_results <- data.frame(Real = test_data$LN_IC50, Predicted = xgb_predictions)
 head(reg_results)
@@ -278,6 +313,7 @@ rmse <- sqrt(mse)
 cat("Mean Squared Error:", mse, "\n")
 cat("Root Mean Squared Error:", rmse, "\n")
 
+# Important features
 importance <- xgb.importance(model = xgb_model)
 xgb.plot.importance(importance)
 
