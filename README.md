@@ -383,3 +383,43 @@ targetPathway_by_tissue_dunnt <- function(dataframe, tissue) {
   dunn_test
 }
 ```
+## Linear regression model
+
+The previous analysis contributed to understanding of each individual variable and selecting relevant variables for modeling.
+I tried different approaches for linear models, shown bellow.
+
+```{r}
+#| eval: false
+#| include: false
+lm(LN_IC50 ~ TARGET, data = gdsc_final)
+lm(LN_IC50 ~ TARGET_PATHWAY, data = gdsc_final)
+lm(LN_IC50 ~ tissue_descriptor_2, data = gdsc_final)
+```
+
+In this model, I evaluate how the cell line and drug alone describe drug response.
+
+```{r}
+mlr_model <- lm(LN_IC50 ~ CELL_LINE_NAME + DRUG_NAME,
+                data = gdsc_final)
+summary(mlr_model)
+```
+
+Here’s what I learned from some of my initial linear modeling attempts:
+
+1. Testing Individual Predictors: Modeling LN_IC50 against single variables showed consistently low adjusted R² values, except for the molecular target, which alone explained 67% of the variance. This suggests that knowing a drug’s specific mechanism of action is remarkably predictive of its effectiveness across cell lines.
+
+2. Testing cell lines and drug names howed the following results:
+Residual standard error: 1.177 on 227,420 DF 
+Adjusted R²: 0.818 
+F-statistic: 864.6 (p < 2.2e-16) 
+
+Summarizing these results, I draw the following conclusions:
+- High R² suggests the model captures some structure
+- Most explanatory power comes from cell line and drug names—essentially memorizing patterns rather than uncovering generalizable biology.
+
+##### Evaluating the model:
+In the Residuals vs. Fitted values plot bellow, we can assume heteroscedasticity by the increased dispersion of residuals by the left and middle section of the plot. The Q-Q plot of the standardized residuals show strong deviation from both tails, and the Scale-Location plot shows a non-straight line, further contributing to the assumption of non-normality.
+
+```{r}
+plot(lm_model)
+```
