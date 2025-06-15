@@ -423,3 +423,158 @@ In the Residuals vs. Fitted values plot bellow, we can assume heteroscedasticity
 ```{r}
 plot(lm_model)
 ```
+
+## Multinomial logistic regression model
+```{r}
+library(caret)
+library(pROC)
+```
+I also explored developing a multinomial logistic regression model, for classification of LN_IC50 values into resistant vs. sensitive. To achieve that, I took the following steps:
+1. Created a resistance label, assigning 0 to values of LN_IC50 bellow the median, and 1 to values above the median.
+2. Partitioned the data into a 80% for training and 20% for testing.
+
+```{r}
+median_IC50 <- median(gdsc_final$LN_IC50, na.rm = TRUE)
+gdsc_final$resistance_label <- ifelse(gdsc_final$LN_IC50 > median_IC50, 1, 0)
+
+set.seed(21)
+trainIndex <- createDataPartition(gdsc_final$LN_IC50, p = 0.8, list = FALSE)
+
+train_data <- gdsc_final[trainIndex, ]
+test_data  <- gdsc_final[-trainIndex, ]
+```
+
+As before, I tried different models. The one shown bellow uses the most significant variables: AUC, tissue descriptor and drug targets.
+To evaluate it I plotted a confusion matrix, which shows the accuracy, sensibility and specificity of the model, and a ROC curve.
+
+```{r}
+#| eval: false
+#| include: false
+# Other model tested.
+glm(resistance_label ~ DRUG_NAME + CELL_LINE_NAME, 
+    data = train_data |> select(-LN_IC50), family = "binomial")
+glm(resistance_label ~ tissue_descriptor_2 + TARGET_PATHWAY, 
+    data = train_data |> select(-LN_IC50), family = "binomial")
+```
+```{r}
+glm(resistance_label ~ AUC + tissue_descriptor_2 + TARGET, 
+    data = train_data |> select(-LN_IC50),
+    family = "binomial")
+log_pred_probs <- predict(log_model, newdata = test_data, type = "response")
+log_pred_class <- ifelse(log_pred_probs > 0.5, 1, 0)
+confusionMatrix(factor(log_pred_class), factor(test_data$resistance_label))
+```
+```{r}
+roc_curve <- roc(test_data$resistance_label, log_pred_probs)
+plot(roc_curve)
+```
+## Machine Learning model
+
+Finally, using previous insights from linear models and statistical analysis, I tried developing machine learning models with the dataset.
+
+### XGBoost regression model
+```{r}
+library(xgboost)
+```
+With the previously partitioned data, I fitted the model with the two most descriptive variables, the target and tissue descriptor. Generated the train matrices and trained for 200 rounds. 
+```{r}
+train_data <- train_data[complete.cases(train_data[, c("tissue_descriptor_2", 
+                                                       "TARGET", "LN_IC50")]), ]
+test_data <- test_data[complete.cases(test_data[, c("tissue_descriptor_2", 
+                                                    "TARGET", "LN_IC50")]), ]
+
+train_matrix <- model.matrix(LN_IC50 ~ tissue_descriptor_2 + TARGET, 
+                             data = train_data)
+test_matrix  <- model.matrix(LN_IC50 ~ tissue_descriptor_2 + TARGET, 
+                             data = test_data)
+
+dtrain <- xgb.DMatrix(data = train_matrix, label = train_data$LN_IC50)
+dtest  <- xgb.DMatrix(data = test_matrix, label = test_data$LN_IC50)
+
+params <- list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  max_depth = 4,
+  eta = 0.1
+)
+model <- xgb.train(params,
+                   data = dtrain,
+                   nrounds = 200,
+                   watchlist = list(train = dtrain, test = dtest),
+                   verbose = 0,
+                   callbacks = list(cb.evaluation.log()))
+```
+For evaluation, the model training and testing curves are plotted, and the RMSE is shown. Also, a variable importance plot is shown.
+```{r}
+# Plotting model training and test curves
+iterations = list(model$evaluation_log[, "iter"])
+train_rmse = list(model$evaluation_log[, "train_rmse"])
+test_rmse = list(model$evaluation_log[, "test_rmse"])
+
+plot_data <- data.frame(
+  iterations = iterations,
+  train_rmse = train_rmse,
+  test_rmse = test_rmse
+) |> pivot_longer(
+  cols=c("train_rmse", "test_rmse"),
+  names_to="rmse",
+  values_to="values"
+)
+
+ggplot(data = plot_data, aes(x = iter, y = values)) +
+  geom_line(aes(color=rmse)) +
+  labs(x="iterations", y="RMSE", title="Model training and test curves") +
+  theme_minimal()
+
+# Predictions
+xgb_predictions <- predict(xgb_model, dtest)
+reg_results <- data.frame(Real = test_data$LN_IC50, Predicted = xgb_predictions)
+head(reg_results)
+
+mse <- mean((test_data$LN_IC50 - xgb_predictions)^2)
+rmse <- sqrt(mse)
+cat("Mean Squared Error:", mse, "\n")
+cat("Root Mean Squared Error:", rmse, "\n")
+
+# Important features
+importance <- xgb.importance(model = xgb_model)
+xgb.plot.importance(importance)
+```
+### XGBoost Classifier
+
+For a classifier model, I decided to use the most significant variables - AUC, tissue_descriptor_2 and TARGET - to predict the resistance label created previously.
+Bellow, the model design, confusion matrix, ROC curve and most important features of the model are shown.
+
+```{r}
+X <- model.matrix(~ AUC + tissue_descriptor_2 + TARGET, data = train_data)[, -1]
+train_matrix2 <- xgb.DMatrix(data = X, label = train_data$resistance_label)
+Y <- model.matrix(~ AUC + tissue_descriptor_2 + TARGET, data = test_data)[, -1]
+test_matrix2 <- xgb.DMatrix(data = Y, label = test_data$resistance_label)
+
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "auc",
+  max_depth = 6,
+  eta = 0.1,
+  subsample = 0.8,
+  colsample_bytree = 0.8)
+
+xgb_model_class <- xgb.train(params = params,
+                             data = train_matrix2,
+                             nrounds = 100,
+                             watchlist = list(eval = test_matrix2, train = train_matrix2),
+                             early_stopping_rounds = 10)
+```
+```{r}
+xgb_prob <- predict(xgb_model_class, newdata = test_matrix2)
+xgb_pred_class <- ifelse(xgb_prob > 0.5, 1, 0)
+confusionMatrix(factor(xgb_pred_class), factor(test_data$resistance_label))
+```
+```{r}
+roc_curve_xgb <- roc(test_data$resistance_label, xgb_prob)
+plot(roc_curve_xgb)
+```
+```{r}
+importance_matrix <- xgb.importance(model = xgb_model_class)
+xgb.plot.importance(importance_matrix)
+```
