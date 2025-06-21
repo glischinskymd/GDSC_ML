@@ -578,3 +578,35 @@ plot(roc_curve_xgb)
 importance_matrix <- xgb.importance(model = xgb_model_class)
 xgb.plot.importance(importance_matrix)
 ```
+## Enrichment Analysis en R (clusterProfiler + Reactome/KEGG)
+In this project, I investigated drug response profiles of a breast cancer cell line as an example, using the GDSC2 dataset. Drug sensitivity and resistance were determined based on the **Z-score of the natural logarithm of the IC50 (LN\_IC50)**.
+
+* The **IC50** represents the concentration of a drug required to inhibit 50% of cellular viability.
+* The **LN\_IC50 Z-score** standardizes IC50 values across the dataset, allowing for comparison between drugs and cell lines.
+
+### Gene Sensitivity Definition
+
+Genes associated with **high drug sensitivity** were extracted by:
+
+1. Filtering breast cancer cell lines where **Z\_SCORE < -3**, indicating strong sensitivity to specific compounds.
+2. Extracting the `TARGET` column from the filtered subset.
+3. Creating a unique list of targets associated with sensitive responses.
+4. Converting gene symbols to **Entrez IDs** using `bitr()` from the `clusterProfiler` package.
+5. Performing pathway enrichment analysis with:
+
+   * `enrichKEGG()` for KEGG pathways.
+   * `enrichPathway()` for Reactome pathways.
+
+These genes likely represent molecular targets for compounds that induce strong anti-tumoral effects in breast cancer models.
+
+### Gene Resistance Definition
+
+Genes associated with **drug resistance** were extracted by:
+
+1. Filtering breast cancer cell lines where **Z\_SCORE > 3**, indicating low sensitivity (resistance) to tested drugs.
+2. Extracting the `TARGET` column from resistant entries.
+3. Cleaning compound names and mapping them to gene symbols when possible.
+4. Converting the list to Entrez IDs using `bitr()` for downstream enrichment.
+5. Running the same KEGG and Reactome enrichment analyses.
+
+This approach allowed identification of molecular pathways potentially associated with **intrinsic or acquired drug resistance**.
