@@ -346,3 +346,49 @@ plot(rocCurve_xgbClassifier)
 
 importance_matrix <- xgb.importance(model = xgb_classifier)
 xgb.plot.importance(importance_matrix)
+
+# Enrichment Analysis (clusterProfiler + Reactome/KEGG)
+if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install("clusterProfiler")
+BiocManager::install("ReactomePA")
+BiocManager::install("org.Hs.eg.db")
+
+library(clusterProfiler)
+library(ReactomePA)
+library(org.Hs.eg.db)
+       
+# Genes associated with high drug sensitivity for tissue_descriptor_2 = "breast"
+gdsc_final |> filter(tissue_descriptor_2 == "breast", Z_SCORE < -3) |> select(TARGET) |> unique()
+
+genes_sensitivity <- c("ATM", "EGFR", "ERBB2", "BRAF", "MEK1", "MEK2", "AKT1", "AKT2",
+           "AKT3", "XIAP", "IAP1", "IAP2", "ERK1", "ERK2", "cIAP", "BTK",
+           "ROCK2", "PI3Kalpha", "PI3Kbeta", "RAS", "ESR", "PPM1D", "RAC1",
+           "RAC2", "RAC3", "S6K1", "IAP")
+
+entrez_genes <- bitr(genes_sensitivity, fromType = "SYMBOL", toType = "ENTREZID", 
+                     OrgDb = org.Hs.eg.db)
+enrich_kegg <- enrichKEGG(gene = entrez_genes$ENTREZID, organism = 'hsa')
+enrich_reactome <- enrichPathway(gene = entrez_genes$ENTREZID, 
+                                 organism = "human")
+
+barplot(enrich_kegg, showCategory = 10)
+dotplot(enrich_reactome, showCategory = 10)
+
+# Genes associated with Z-score > 3 for tissue_descriptor_2 = "breast"
+gdsc_final |> filter(tissue_descriptor_2 == "breast", Z_SCORE > 3) |> select(TARGET) |> unique()
+genes_resistance <- c("LSD1", "ERK2", "MET", "KDR", "TIE2", "VEGFR3/FLT4", 
+                      "RON", "PDGFR", "FGFR1", "EGFR", "TNKS1", "TNKS2", 
+                      "IGF1R", "ATR", "IDH1", "ERK1", "ERK2", "S6K1",
+                      "MRCKB_HUMAN", "CAPN1", "GADD34", "PI3Kalpha", "NAE", 
+                      "CKD2", "WEE1", "PLK1", "BCL2", "BCL-XL", "MCL1", "TOP1",
+                      "CHEK1", "CHEK2", "GSK3A", "GSK3B", "MRE11", "CDK4", 
+                      "CDK6")
+
+entrez_genes <- bitr(genes_resistance, fromType = "SYMBOL", toType = "ENTREZID", 
+                     OrgDb = org.Hs.eg.db)
+enrich_kegg <- enrichKEGG(gene = entrez_genes$ENTREZID, organism = 'hsa')
+enrich_reactome <- enrichPathway(gene = entrez_genes$ENTREZID, 
+                                 organism = "human")
+
+barplot(enrich_kegg, showCategory = 10)
+dotplot(enrich_reactome, showCategory = 10)
