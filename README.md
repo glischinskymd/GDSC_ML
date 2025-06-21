@@ -579,7 +579,7 @@ importance_matrix <- xgb.importance(model = xgb_model_class)
 xgb.plot.importance(importance_matrix)
 ```
 ## Enrichment Analysis en R (clusterProfiler + Reactome/KEGG)
-In this project, I investigated drug response profiles of a breast cancer cell line as an example, using the GDSC2 dataset. Drug sensitivity and resistance were determined based on the **Z-score of the natural logarithm of the IC50 (LN\_IC50)**.
+In this project, I investigated drug response profiles of breast cancer cell lines as an example, using the GDSC2 dataset. Drug sensitivity and resistance were determined based on the **Z-score of the natural logarithm of the IC50 (LN\_IC50)**.
 
 * The **IC50** represents the concentration of a drug required to inhibit 50% of cellular viability.
 * The **LN\_IC50 Z-score** standardizes IC50 values across the dataset, allowing for comparison between drugs and cell lines.
